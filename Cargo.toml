@@ -1,0 +1,19 @@
+[package]
+name = "sentence_piece_examples"
+version = "0.1.0"
+authors = ["Guillaume Becquin <guillaume.becquin@gmail.com>"]
+edition = "2018"
+
+[[bin]]
+name = "basic_implementation"
+path = "src/spiece_basic.rs"
+
+[[bin]]
+name = "trie_implementation"
+path = "src/spiece_trie.rs"
+
+[dependencies]
+hashbrown = "0.7.2"
+rust_tokenizers = "3.1.2"
+protobuf = "= 2.14.0"
+itertools = "0.8.2"
