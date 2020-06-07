@@ -12,8 +12,13 @@ path = "src/spiece_basic.rs"
 name = "trie_implementation"
 path = "src/spiece_trie.rs"
 
+[[bin]]
+name = "dart_implementation"
+path = "src/spiece_dart.rs"
+
 [dependencies]
 hashbrown = "0.7.2"
 rust_tokenizers = "3.1.2"
 protobuf = "= 2.14.0"
 itertools = "0.8.2"
+darts = "0.1"

@@ -17,6 +17,7 @@ use rust_tokenizers::preprocessing::vocab::sentencepiece_proto::sentencepiece_mo
 use std::io::Read;
 use itertools::Itertools;
 use std::time::Instant;
+use darts::{DoubleArrayTrieBuilder, DoubleArrayTrie};
 
 #[derive(Clone, Copy)]
 pub struct Node<'a> {
@@ -27,31 +28,16 @@ pub struct Node<'a> {
     pub end: usize,
 }
 
-pub struct DagNode {
+pub struct Prefix {
     pub text: String,
     pub len: usize,
     pub score: f32,
     pub index: i32,
-    pub leaf: bool,
-    pub children: BrownHashMap<char, DagNode>,
-}
-
-impl DagNode {
-    pub fn new(text: String) -> DagNode {
-        let len = text.chars().count();
-        DagNode {
-            text,
-            len,
-            score: 0.0,
-            index: 0,
-            leaf: false,
-            children: BrownHashMap::new(),
-        }
-    }
 }
 
 pub struct SentencePieceModel {
-    pub root: DagNode
+    pub dart: DoubleArrayTrie,
+    pub vocab: BrownHashMap<String, Prefix>,
 }
 
 impl SentencePieceModel {
@@ -61,33 +47,24 @@ impl SentencePieceModel {
         f.read_to_end(&mut contents).unwrap();
 
         let proto = parse_from_bytes::<ModelProto>(contents.as_slice()).unwrap();
-        let root = DagNode::new("".to_string());
-        let mut model = SentencePieceModel { root };
+        let mut vocab = BrownHashMap::new();
+        let mut records: Vec<&str> = Vec::new();
         for (idx, piece) in proto.get_pieces().iter().enumerate() {
-            model.insert(piece.get_piece(), piece.get_score(), idx as i32);
+            let text = piece.get_piece();
+            records.push(piece.get_piece());
+            vocab.insert(text.to_owned(),
+                Prefix {
+                    text: text.to_owned(),
+                    len: text.len(),
+                    score: piece.get_score(),
+                    index: idx as i32
+                }
+            );
         }
-        model
+        records.sort_by(|a, b| a.cmp(&b));
+        let dart = DoubleArrayTrieBuilder::new().build(&records);
 
-    }
-
-    fn insert(&mut self, word: &str, score: f32, index: i32) {
-        let char_count = word.chars().count();
-        let mut node = &mut self.root;
-
-        for (idx, character) in word.chars().enumerate() {
-            if !node.children.contains_key(&character) {
-                let mut text = node.text.clone();
-                text.push(character);
-                let new_node = DagNode::new(text);
-                node.children.insert(character, new_node);
-            }
-            node = node.children.get_mut(&character).unwrap();
-            if idx == char_count - 1 {
-                node.leaf = true;
-                node.score = score;
-                node.index = index;
-            }
-        }
+        SentencePieceModel { dart, vocab }
     }
 
     pub fn decode_backward<'a>(&'a self, nodes: &'a Vec<Option<Node<'a>>>) -> Vec<&'a Node> {
@@ -103,32 +80,18 @@ impl SentencePieceModel {
         best_sequence
     }
 
-    pub fn common_prefix_search<'a>(&'a self, text: &'a str) -> Vec<&DagNode> {
-        let mut results = vec!();
-        let mut characters = text.chars();
-
-        let mut node = self.root.children.get(&characters.next().unwrap());
-        if node.is_some() {
-            if node.unwrap().leaf {
-                results.push(node.unwrap());
-            }
-        } else {
-            return vec!();
-        }
-        while let Some(character) = characters.next() {
-            node = node.unwrap().children.get(&character);
-            if node.is_some() {
-                if node.unwrap().leaf {
-                    results.push(node.unwrap());
-                }
-            } else {
-                break;
-            }
-        }
-        results
+    pub fn common_prefix_search<'a>(&'a self, text: &'a str) -> Vec<&Prefix> {
+        self.dart.common_prefix_search(text).map(|matches| {
+            matches
+                .iter()
+                .map(|(end_idx, _)| {
+                    self.vocab.get(&text[..*end_idx]).unwrap()
+                })
+                .collect()
+        }).unwrap_or(vec!())
     }
 
-    pub fn decode_forward_dag<'a>(&'a self, text: &'a str) -> Vec<Option<Node<'a>>> {
+    pub fn decode_forward<'a>(&'a self, text: &'a str) -> Vec<Option<Node<'a>>> {
         let mut char_positions = text
             .char_indices()
             .map(|(pos, _)| pos)
@@ -171,22 +134,22 @@ impl SentencePieceModel {
     pub fn tokenize_dag(&self, text: &str) -> Vec<String> {
         let text = text.replace(' ', "\u{2581}");
         let text = text.as_str();
-        let output = self.decode_forward_dag(text);
+        let output = self.decode_forward(text);
         let decoded = self.decode_backward(&output);
         decoded.into_iter().map(|node| node.text.to_string()).collect()
     }
 }
 
 fn main() {
-
     let text = " All human beings are born free and equal in dignity and rights. They are endowed with reason and conscience and should act towards one another in a spirit of brotherhood.";
     let tokenizer = SentencePieceModel::from_file("E:/Coding/notebooks/xlnet-base-cased-spiece.model");
 
     let now = Instant::now();
-    for _ in 0..1000 {
+    for _ in 0..100 {
         let _ = tokenizer.tokenize_dag(text);
+
     }
-
-    println!("{:?}", now.elapsed().as_nanos()/1000);
-
+    println!("{:?}", now.elapsed().as_nanos()/100);
+    let output = tokenizer.tokenize_dag(text);
+    println!("{:?}", output);
 }
