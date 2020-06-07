@@ -141,8 +141,8 @@ impl SentencePieceModel {
 }
 
 fn main() {
-    let text = " All human beings are born free and equal in dignity and rights. They are endowed with reason and conscience and should act towards one another in a spirit of brotherhood.";
-    let tokenizer = SentencePieceModel::from_file("E:/Coding/notebooks/xlnet-base-cased-spiece.model");
+    let text = " The quick brown fox jumps over the lazy dog";
+    let tokenizer = SentencePieceModel::from_file("path/to/spiece.model");
 
     let now = Instant::now();
     for _ in 0..100 {
